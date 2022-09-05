@@ -100,7 +100,7 @@ impl AmiiboDump {
         // derive the data HMAC key, aes key, and aes initialization vector
         let results = self.clone().derive_key(self.data_master_key, true);
         self.hmac_data_key = Some(results.hmac_key);
-        let mut aes_key: [u8;16] = results.aes_key.unwrap().try_into().unwrap();
+        let aes_key: [u8;16] = results.aes_key.unwrap().try_into().unwrap();
         let aes_iv = results.aes_iv.unwrap();
 
         let generic_aes_key = GenericArray::from_slice(&aes_key);
