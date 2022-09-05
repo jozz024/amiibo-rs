@@ -1,0 +1,17 @@
+[package]
+name = "amiibo-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+
+[dependencies]
+sha2 = "0.10.5"
+hmac = "0.12.1"
+aes-ctr = "0.6.0"
+binrw = "0.9.2"
+hex = "0.4.3"
+cipher = "0.4.2"
+ctr = "0.6"
+aes-soft = "0.6"
