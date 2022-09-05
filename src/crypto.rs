@@ -4,7 +4,7 @@ use crate::{
 };
 use hmac::{Hmac, Mac};
 use sha2::{Sha256};
-use aes_ctr::Aes256Ctr;
+use aes_ctr::Aes128Ctr;
 use aes_ctr::cipher::{
     NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek,
     generic_array::{
@@ -13,7 +13,7 @@ use aes_ctr::cipher::{
 };
 
 use ctr::Ctr128;
-use aes_soft::Aes256;
+use aes_soft::Aes128;
 
 
 #[derive(Clone, Debug)]
@@ -93,21 +93,19 @@ impl AmiiboDump {
         }
     }
 
-    fn derive_keys_and_cipher(mut self) -> Ctr128<Aes256> {
+    fn derive_keys_and_cipher(mut self) -> Ctr128<Aes128> {
         // derive the tag HMAC key
         self.hmac_tag_key = Some(self.clone().derive_key(self.clone().tag_master_key, false).hmac_key);
 
         // derive the data HMAC key, aes key, and aes initialization vector
         let results = self.clone().derive_key(self.data_master_key, true);
         self.hmac_data_key = Some(results.hmac_key);
-        let mut aes_key = results.aes_key.unwrap();
+        let mut aes_key: [u8;16] = results.aes_key.unwrap().try_into().unwrap();
         let aes_iv = results.aes_iv.unwrap();
-        dbg!(&aes_iv[..].len());
-        aes_key.append(&mut vec![0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);
-        dbg!(&aes_key[..].len());
+
         let generic_aes_key = GenericArray::from_slice(&aes_key);
         let generic_aes_iv = GenericArray::from_slice(&aes_iv[..]);
-        Aes256Ctr::new(generic_aes_key, generic_aes_iv)
+        Aes128Ctr::new(generic_aes_key, generic_aes_iv)
     }
 
     pub fn new(master_keys: (AmiiboMasterKey, AmiiboMasterKey), dump: Vec<u8>) -> Self {
