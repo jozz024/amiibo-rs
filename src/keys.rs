@@ -44,8 +44,8 @@ impl AmiiboMasterKey {
     }
 
     pub fn from_separate_bin(data_bin: Vec<u8>, tag_bin: Vec<u8>) -> (AmiiboMasterKey, AmiiboMasterKey) {
-        let tag = Self::__init__(tag_bin, TAG_BIN_SHA256_HEXDIGEST);
         let data = Self::__init__(data_bin, DATA_BIN_SHA256_HEXDIGEST);
+        let tag = Self::__init__(tag_bin, TAG_BIN_SHA256_HEXDIGEST);
 
         (data, tag)
     }
@@ -63,7 +63,7 @@ impl AmiiboMasterKey {
             panic!("Data should be 160 bytes, was {count}.")
         }
 
-        Self::from_separate_bin(combined_bin[80..160].to_vec(), combined_bin[0..80].to_vec())
+        Self::from_separate_bin(combined_bin[0..80].to_vec(), combined_bin[80..160].to_vec())
 
     }
 }

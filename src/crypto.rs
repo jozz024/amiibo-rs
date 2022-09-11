@@ -6,12 +6,11 @@ use hmac::{Hmac, Mac};
 use sha2::{Sha256};
 use aes_ctr::Aes128Ctr;
 use aes_ctr::cipher::{
-    NewStreamCipher, SyncStreamCipher, SyncStreamCipherSeek,
+    NewStreamCipher, StreamCipher, SyncStreamCipherSeek,
     generic_array::{
         GenericArray,
     }
 };
-
 use ctr::Ctr128;
 use aes_soft::Aes128;
 
@@ -108,6 +107,15 @@ impl AmiiboDump {
         Aes128Ctr::new(generic_aes_key, generic_aes_iv)
     }
 
+    fn get_crypt_block(&self) -> Vec<u8> {
+        let mut data = self.data[0x014..0x034].to_vec();
+        data.append(&mut self.data[0x0A0..0x208].to_vec());
+        return data
+    }
+    fn set_crypt_block(&mut self, data: Vec<u8>) {
+        self.data[0x014..0x034].copy_from_slice(&data[..0x020]);
+        self.data[0x0A0..0x208].copy_from_slice(&data[0x020..]);
+    }
     pub fn new(master_keys: (AmiiboMasterKey, AmiiboMasterKey), dump: Vec<u8>) -> Self {
         let (data_master_key, tag_master_key) = master_keys;
         let size = dump.len();
@@ -128,10 +136,12 @@ impl AmiiboDump {
         }
     }
 
-    pub fn unlock(mut self) -> Vec<u8> {
+    pub fn unlock(&mut self) {
         let mut cipher = self.clone().derive_keys_and_cipher();
         cipher.seek(0);
-        cipher.apply_keystream(&mut self.data);
-        return self.data;
+        let mut crypt_block = self.get_crypt_block();
+        cipher.decrypt(&mut crypt_block);
+
+        self.set_crypt_block(crypt_block)
     }
 }
