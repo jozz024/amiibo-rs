@@ -2,6 +2,11 @@
 name = "amiibo"
 version = "0.1.0"
 edition = "2021"
+authors = ["jozz024", ]
+description = "An amiibo library, written in Rust"
+readme = "README.md"
+repository = "https://github.com/jozz024/amiibo-rs"
+license-file = "LICENSE"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
