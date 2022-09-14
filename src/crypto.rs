@@ -29,9 +29,9 @@ pub struct AmiiboDump{
 type HmacSha256 = Hmac<Sha256>;
 
 impl AmiiboDump {
-    pub fn derive_key(self, key: AmiiboMasterKey, derive_aes: bool) -> utils::TypeOr {
+    pub fn derive_key(&self, key: &mut AmiiboMasterKey, derive_aes: bool) -> utils::TypeOr {
         // start off with the type string (14 bytes, zero terminated)
-        let mut seed = key.type_string;
+        let mut seed = &mut key.type_string;
 
         // the only two values I've found for magic_size is 14 and 16
         // but this code generic
@@ -53,7 +53,7 @@ impl AmiiboDump {
         // extract some tag data (pages 0x20 - 0x28)
         let user = &self.data[0x060..0x080];
         // and xor it with the key padding
-        let user_key_zip = user.iter().zip(key.xor_pad);
+        let user_key_zip = user.iter().zip(&key.xor_pad);
         let mut xor = Vec::new();
         for (a, b) in user_key_zip{
             xor.append(&mut [a ^ b].to_vec());
@@ -78,7 +78,7 @@ impl AmiiboDump {
         }
         else {
             let mut mac = HmacSha256::new_from_slice(&key.hmac_key).unwrap();
-            mac.update(b"\x00\x01"); // counter (1)
+            mac.update(b"\x00\x00"); // counter (0)
             mac.update(&seed);
 
             let derived_bytes = mac.finalize().into_bytes();
@@ -92,12 +92,12 @@ impl AmiiboDump {
         }
     }
 
-    fn derive_keys_and_cipher(mut self) -> Ctr128<Aes128> {
+    fn derive_keys_and_cipher(&mut self) -> Ctr128<Aes128> {
         // derive the tag HMAC key
-        self.hmac_tag_key = Some(self.clone().derive_key(self.clone().tag_master_key, false).hmac_key);
-
+        self.hmac_tag_key = Some(self.clone().derive_key(&mut self.tag_master_key, false).hmac_key);
+        dbg!(self.hmac_tag_key.as_ref().unwrap());
         // derive the data HMAC key, aes key, and aes initialization vector
-        let results = self.clone().derive_key(self.data_master_key, true);
+        let results = self.clone().derive_key(&mut self.data_master_key, true);
         self.hmac_data_key = Some(results.hmac_key);
         let aes_key: [u8;16] = results.aes_key.unwrap().try_into().unwrap();
         let aes_iv = results.aes_iv.unwrap();
@@ -110,7 +110,7 @@ impl AmiiboDump {
     fn get_crypt_block(&self) -> Vec<u8> {
         let mut data = self.data[0x014..0x034].to_vec();
         data.append(&mut self.data[0x0A0..0x208].to_vec());
-        return data
+        data
     }
     fn set_crypt_block(&mut self, data: Vec<u8>) {
         self.data[0x014..0x034].copy_from_slice(&data[..0x020]);
@@ -141,6 +141,15 @@ impl AmiiboDump {
         cipher.seek(0);
         let mut crypt_block = self.get_crypt_block();
         cipher.decrypt(&mut crypt_block);
+
+        self.set_crypt_block(crypt_block)
+    }
+
+    pub fn lock(&mut self) {
+        let mut cipher = self.clone().derive_keys_and_cipher();
+        cipher.seek(0);
+        let mut crypt_block = self.get_crypt_block();
+        cipher.encrypt(&mut crypt_block);
 
         self.set_crypt_block(crypt_block)
     }
