@@ -1,5 +1,5 @@
 [package]
-name = "amiibo-rs"
+name = "amiibo"
 version = "0.1.0"
 edition = "2021"
 
