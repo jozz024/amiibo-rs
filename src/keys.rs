@@ -33,8 +33,7 @@ impl AmiiboMasterKey {
         hasher.update(&data);
 
         let result = hasher.finalize();
-        dbg!(result);
-        dbg!(decode(sha256_digest).unwrap());
+
         if result[..].to_vec() != decode(sha256_digest).unwrap() {
             panic!("Data check has failed, may be corrupt");
         }

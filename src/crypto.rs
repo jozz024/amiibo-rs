@@ -31,7 +31,7 @@ type HmacSha256 = Hmac<Sha256>;
 impl AmiiboDump {
     pub fn derive_key(&self, key: &mut AmiiboMasterKey, derive_aes: bool) -> utils::TypeOr {
         // start off with the type string (14 bytes, zero terminated)
-        let mut seed = &mut key.type_string;
+        let seed = &mut key.type_string;
 
         // the only two values I've found for magic_size is 14 and 16
         // but this code generic
@@ -86,7 +86,9 @@ impl AmiiboDump {
             let aes_iv = derived_bytes[16..].to_vec();
 
             utils::TypeOr{
-                hmac_key: hmac_key.to_vec(), aes_key: Some(aes_key), aes_iv: Some(aes_iv)
+                hmac_key: hmac_key.to_vec(),
+                aes_key: Some(aes_key),
+                aes_iv: Some(aes_iv)
             }
 
         }
@@ -95,7 +97,6 @@ impl AmiiboDump {
     fn derive_keys_and_cipher(&mut self) -> Ctr128<Aes128> {
         // derive the tag HMAC key
         self.hmac_tag_key = Some(self.clone().derive_key(&mut self.tag_master_key, false).hmac_key);
-        dbg!(self.hmac_tag_key.as_ref().unwrap());
         // derive the data HMAC key, aes key, and aes initialization vector
         let results = self.clone().derive_key(&mut self.data_master_key, true);
         self.hmac_data_key = Some(results.hmac_key);
@@ -112,10 +113,12 @@ impl AmiiboDump {
         data.append(&mut self.data[0x0A0..0x208].to_vec());
         data
     }
+
     fn set_crypt_block(&mut self, data: Vec<u8>) {
         self.data[0x014..0x034].copy_from_slice(&data[..0x020]);
         self.data[0x0A0..0x208].copy_from_slice(&data[0x020..]);
     }
+
     pub fn new(master_keys: (AmiiboMasterKey, AmiiboMasterKey), dump: Vec<u8>) -> Self {
         let (data_master_key, tag_master_key) = master_keys;
         let size = dump.len();
@@ -123,8 +126,6 @@ impl AmiiboDump {
         if size < 520 {
             panic!("Amiibo Dump too small!");
         }
-
-        // let (hmac_tag_key, hmac_data_key, aes_key, aes_iv) = self.derive_keys();
 
         Self {
             data_master_key,
