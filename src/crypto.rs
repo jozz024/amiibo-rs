@@ -16,7 +16,7 @@ use aes_soft::Aes128;
 
 
 #[derive(Clone, Debug)]
-pub struct AmiiboDump{
+pub struct AmiiboDump {
     pub data_master_key: AmiiboMasterKey,
     pub tag_master_key: AmiiboMasterKey,
     pub hmac_tag_key: Option<Vec<u8>>,
@@ -65,7 +65,7 @@ impl AmiiboDump {
 
         let mut mac = HmacSha256::new_from_slice(&key.hmac_key).unwrap();
         mac.update(b"\x00\x01"); // counter (1)
-        mac.update(&seed);
+        mac.update(seed);
 
         let derived_bytes = mac.finalize().into_bytes();
         let hmac_key: &[u8] = &derived_bytes[..16];
@@ -79,7 +79,7 @@ impl AmiiboDump {
         else {
             let mut mac = HmacSha256::new_from_slice(&key.hmac_key).unwrap();
             mac.update(b"\x00\x00"); // counter (0)
-            mac.update(&seed);
+            mac.update(seed);
 
             let derived_bytes = mac.finalize().into_bytes();
             let aes_key = derived_bytes[..16].to_vec();
@@ -119,6 +119,32 @@ impl AmiiboDump {
         self.data[0x0A0..0x208].copy_from_slice(&data[0x020..]);
     }
 
+    fn derive_hmacs(&mut self) -> (Vec<u8>, Vec<u8>) {
+        self.hmac_tag_key = Some(self.clone().derive_key(&mut self.tag_master_key, false).hmac_key);
+        self.hmac_data_key = Some(self.clone().derive_key(&mut self.data_master_key, false).hmac_key);
+        let mut tag_hmac = HmacSha256::new_from_slice(self.hmac_tag_key.as_ref().unwrap()).unwrap();
+        tag_hmac.update(&self.data[0x000..0x008]);
+        tag_hmac.update(&self.data[0x054..0x080]);
+        let tag_hmac = tag_hmac.finalize().into_bytes().to_vec();
+
+        let mut data_hmac = HmacSha256::new_from_slice(self.hmac_data_key.as_ref().unwrap()).unwrap();
+        data_hmac.update(&self.data[0x011..0x034]);
+        data_hmac.update(&self.data[0x0A0..0x208]);
+        data_hmac.update(&tag_hmac);
+        data_hmac.update(&self.data[0x000..0x008]);
+        data_hmac.update(&self.data[0x054..0x080]);
+        let data_hmac = data_hmac.finalize().into_bytes().to_vec();
+
+        (tag_hmac, data_hmac)
+    }
+
+    fn set_tag_hmac(&mut self, data: Vec<u8>) {
+        self.data[0x034..0x054].clone_from_slice(&data);
+    }
+
+    fn set_data_hmac(&mut self, data: Vec<u8>) {
+        self.data[0x080..0x0A0].clone_from_slice(&data);
+    }
     pub fn new(master_keys: (AmiiboMasterKey, AmiiboMasterKey), dump: Vec<u8>) -> Self {
         let (data_master_key, tag_master_key) = master_keys;
         let size = dump.len();
@@ -149,6 +175,9 @@ impl AmiiboDump {
     pub fn lock(&mut self) {
         let mut cipher = self.clone().derive_keys_and_cipher();
         cipher.seek(0);
+        let (tag_hmac, data_hmac) = self.derive_hmacs();
+        self.set_tag_hmac(tag_hmac);
+        self.set_data_hmac(data_hmac);
         let mut crypt_block = self.get_crypt_block();
         cipher.encrypt(&mut crypt_block);
 
