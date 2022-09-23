@@ -1,6 +1,8 @@
+use crate::ntag::NTagBase;
 use crate::{
     keys::AmiiboMasterKey,
-    utils
+    utils,
+    ntag
 };
 use hmac::{Hmac, Mac};
 use sha2::{Sha256};
@@ -145,6 +147,18 @@ impl AmiiboDump {
     fn set_data_hmac(&mut self, data: Vec<u8>) {
         self.data[0x080..0x0A0].clone_from_slice(&data);
     }
+
+    fn set_lock_password(&mut self) {
+        let uid = self.get_uid_bin();
+        assert!(uid[0] == 0x04);
+        self.set_password([
+            0xAA ^ uid[1] ^ uid[3],
+            0x55 ^ uid[2] ^ uid[4],
+            0xAA ^ uid[3] ^ uid[5],
+            0x55 ^ uid[4] ^ uid[6],
+        ].to_vec());
+        self.set_password_ack(b"\x80\x80".to_vec());
+    }
     pub fn new(master_keys: (AmiiboMasterKey, AmiiboMasterKey), dump: Vec<u8>) -> Self {
         let (data_master_key, tag_master_key) = master_keys;
         let size = dump.len();
@@ -181,6 +195,72 @@ impl AmiiboDump {
         let mut crypt_block = self.get_crypt_block();
         cipher.encrypt(&mut crypt_block);
 
-        self.set_crypt_block(crypt_block)
+        self.set_crypt_block(crypt_block);
+
+        self.set_lock_password();
+    }
+}
+
+impl ntag::NTagBase for AmiiboDump {
+    //: The total number of pages in this tag type. (8.5 Memory organization)
+    const PAGES: u8 = 135;
+
+    const CT: u8 = 0x88;
+
+    const PAGE_SIZE: u8 = 4;
+    //: The total size in bytes of this tag type. (8.5 Memory organization)
+    const SIZE: u32 =  AmiiboDump::PAGES as u32 * AmiiboDump::PAGE_SIZE as u32;
+    //: The dynamic lock bytes offset in bytes for this tag type.
+    //: (8.5 Memory organization)
+    const DYN_OFFSET: u32 = (AmiiboDump::PAGES - 5) as u32 * AmiiboDump::PAGE_SIZE as u32;
+
+    //: The initial value of the capability container.
+    //: (8.5.6 Memory content at delivery)
+    const CAPABILITY_CONTAINER: [u8; 12]  = *b"\xE1\x10\x3E\x00\x03\x00\xFE\x00\x00\x00\x00\x00";
+
+    fn get_uid_raw(&mut self) -> Vec<u8> {
+        let mut uid = self.data[0..3].to_vec();
+        uid.append(&mut self.data[4..8].to_vec());
+
+        uid
+    }
+
+    fn get_uid_bin(&mut self) -> Vec<u8> {
+        let uid = self.get_uid_raw();
+        assert!(uid.len() == 7);
+
+        let bcc0 = self.data[3];
+        let bcc1 = self.data[8];
+
+        let mut check =  AmiiboDump::CT ^ uid[0] ^ uid[1] ^ uid[2];
+        if check != bcc0 {
+            panic!("BCC0 check failed!");
+        }
+
+        check = uid[3] ^ uid[4] ^ uid[5] ^ uid[6];
+        if check != bcc1 {
+            panic!("BCC1 check failed!");
+        }
+        uid
+    }
+
+    fn set_uid_bin(&mut self, uid: Vec<u8>) {
+        // BCC 0
+        self.data[3] = AmiiboDump::CT ^ uid[0] ^ uid[1] ^ uid[2];
+        // BCC 1
+        self.data[8] = uid[3] ^ uid[4] ^ uid[5] ^ uid[6];
+
+        self.data[0..3].clone_from_slice(&uid[0..3]);
+        self.data[4..8].clone_from_slice(&uid[3..7]);
+    }
+
+    fn set_password(&mut self, value: Vec<u8>) {
+        assert!(value.len() == 4);
+        self.data[(AmiiboDump::DYN_OFFSET + 12) as usize..(AmiiboDump::DYN_OFFSET + 16) as usize].clone_from_slice(&value);
+    }
+
+    fn set_password_ack(&mut self, value: Vec<u8>) {
+        assert!(value.len() == 2);
+        self.data[(AmiiboDump::DYN_OFFSET + 16) as usize..(AmiiboDump::DYN_OFFSET + 18) as usize].clone_from_slice(&value);
     }
 }
